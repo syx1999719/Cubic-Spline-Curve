@@ -1,0 +1,264 @@
+program main
+implicit none;
+integer::i,j,k,m,n;
+real*8::min,max,delta;
+real*8::a(0:90,0:75,3),b(0:3,0:3,3),c(0:90,2),d(0:75,2),e(0:3,2);
+!000
+interface
+	subroutine interpolation(p,q,min,max,z,y)
+	integer,intent(in)::p,q;
+	real*8::min,max,z(0,p,2);
+	real*8,intent(out)::y(0:q,2);
+	end subroutine
+end interface
+!------------------------------以下部分为对已知格点赋值------------------------------
+a=0;b=0;
+do i=0,3
+	do j=0,3
+		b(i,j,1)=dble(i)*600;
+		b(i,j,2)=dble(j)*500;
+	end do
+end do
+b(:,0,3)=(/30,20,15,30/);
+b(:,1,3)=(/15,100,140,350/);
+b(:,2,3)=(/10,95,200,120/);
+b(:,3,3)=(/20,45,25,35/);
+
+do i=0,90
+	do j=0,75
+		a(i,j,1)=dble(i)*20;
+		a(i,j,2)=dble(j)*20;
+	end do
+end do
+!------------------------------以上部分为对已知格点赋值------------------------------
+
+
+
+!==============================以下部分为对特定格点拟合==============================
+do i=0,3
+	do j=0,3
+		e(j,1)=b(j,i,1);
+		e(j,2)=b(j,i,3);
+!		write(*,"(2f16.2)")e(j,1),e(j,2);
+	end do
+	c=0;write(*,*)"";
+	do j=0,90
+		c(j,1)=a(j,i*25,1);
+!		write(*,"(f8.1)")c(j,1);
+	end do
+	call interpolation(3,90,0d0,1800d0,e,c);
+	do j=0,90
+		a(j,i*25,3)=c(j,2);
+!		write(*,"(2I5,2f10.2)")J,I*25,a(j,i*25,1),a(j,i*25,3);
+	end do
+!	pause;
+end do
+a(90,0,3)=30;a(90,25,3)=350;a(90,50,3)=120;a(90,75,3)=35;
+do i=0,90
+	write(*,"(76f3.0)")a(i,:,3);
+end do
+!==============================以下部分为对特定格点拟合==============================
+
+
+
+
+!==============================以下部分为对剩余格点拟合==============================
+do i=0,90
+	do j=0,3
+		e(j,1)=a(i,j*25,2)
+		e(j,2)=a(i,j*25,3)
+!		write(*,"(2f8.3)")e(j,1),e(j,2);
+	end do
+!		write(*,*)"";
+	d=0;
+	do j=0,75
+		d(j,1)=a(i,j,2);
+!		write(*,"(f8.3)")d(j,1);
+	end do
+!	write(*,*)"";
+	call interpolation(3,75,0d0,1500d0,e,d);
+	do j=0,74
+		a(i,j,3)=d(j,2)
+!		write(*,"(2I5,2f10.2)")J,I,a(i,j,2),a(i,j,3);
+	end do
+!		write(*,"(2I5,2f10.2)")J,I,a(i,j,2),a(i,j,3);
+!	pause;
+
+end do
+do i=0,90
+	write(*,"(76f3.0)")a(i,:,3);
+end do
+!==============================以下部分为对剩余格点拟合==============================
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~输出数据~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+open(unit=10086, file='data.txt');
+do i=75,0,-1
+	write(10086,"(91f26.6)")a(:,i,3);
+	write(*,"(91f6.2)")a(:,i,3);
+end do
+close(10086);
+
+!~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~输出数据~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+end program
+
+
+
+!------------------------------------------拟合子程序----------------------------------------------
+subroutine interpolation(p, q, min, max, z, y)
+implicit none;
+interface
+
+	subroutine reverse(a0,c)
+		implicit none;
+		real*8::a0(:,:),c(:,:);
+		integer::n,m;
+	end subroutine
+end interface
+
+
+integer,intent(in)::p,q;!共有p+1个点; p个区间和拟合函数； p个h; p-1个h,lam,mu,c
+integer:: i,j,k;
+!			real*8, external::original_function;
+real*8::a(p-1,p-1),b(p-1,p-1),z(0:p,2),h(0:p-1),lam(p-1),mu(p-1),m(0:p),c(p-1);
+real*8,intent(out)::y(0:q,2);
+real*8::min,max,delta;
+a=0;c=0;m=0;
+
+delta=abs(max-min)/dble(q);
+!write(*,*)delta;
+
+do i=0,p-1
+	h(i)=z(i+1,1)-z(i,1);
+end do
+
+do i=1,p-1
+	lam(i)=h(i)/(h(i)+h(i-1));
+	mu(i)=h(i-1)/(h(i)+h(i-1));
+	c(i)=3*(lam(i)*((z(i,2)-z(i-1,2))/h(i-1))+mu(i)*((z(i+1,2)-z(i,2))/h(i)));
+	a(i,i)=2;
+end do
+do i=1,p-2
+	a(i,i+1)=mu(i);
+	a(i+1,i)=lam(i+1);
+!	write(*,"(3f12.4/)")a(i,:);
+end do
+!	write(*,"(3f12.4/)")a(p-1,:);
+
+call reverse(a,b);
+
+do i=1,p-1
+	do j=1,p-1
+	m(i)=m(i)+b(i,j)*c(j);
+	end do
+end do
+
+!do i=1,p-1
+!	write(*,"(f16.8)")m(i);
+!end do
+
+do i=0,q
+	y(i,1)=min+i*delta;
+end do
+
+do k=0,q
+	i=0;
+	do while(y(k,1)-z(i,1)>=0.and.i<=p)
+		i=i+1;
+	end do
+		i=i-1;
+	if(i>=p.or.y(k,1)<z(0,1)) then
+		write(*,*)"Out of boundary!",i,p,y(k,1),z(i,1);
+		cycle;
+	end if
+	y(k,2)=(h(i)+2*(y(k,1)-z(i,1)))*((y(k,1)-z(i+1,1))**2d0)*z(i,2)/(h(i)**3d0) + (h(i)-2*(y(k,1)-z(i+1,1)))*((y(k,1)-z(i,1))**2d0)*z(i+1,2)/(h(i)**3d0) + (y(k,1)-z(i,1))*((y(k,1)-z(i+1,1))**2d0)*m(i)/(h(i)**2d0) + (y(k,1)-z(i+1,1))*((y(k,1)-z(i,1))**2d0)*m(i+1)/(h(i)**2d0)
+
+end do
+open(unit=10, file='data.txt');
+!do i=0,q
+!	write(*,"(3f16.6)")y(i,1),y(i,2);
+!	write(10,"(3f16.6)")y(i,1),y(i,2);
+!end do
+close(10);
+end subroutine
+!------------------------------------------拟合子程序----------------------------------------------
+
+
+
+
+
+
+!----------------------------------------求逆矩阵子程序--------------------------------------------
+subroutine reverse(a0,c)
+implicit none;
+real*8::a0(:,:),c(:,:);
+integer::n,m,i,j,k;
+real*8::b(1:size(a0,1),1:size(a0,2)),a(1:size(a0,1),1:size(a0,2)),q(1:size(a0,2)),p,s;
+n=size(a,1);m=size(a,2);a=a0;
+
+if (m/=n) then
+	write(*,*)"ERROR";
+	stop;
+end if
+b=0;
+do i=1,n
+	b(i,i)=1;
+end do
+do i=1,m
+	!以下为寻找不为0的那一项
+	if(a(i,i)==0) then
+		j=i+1;
+		do while(a(j,j)/=0.or.j>n)
+			j=j+1;
+		end do
+		if(j>n) then
+			write(*,*)"Singular matrix!";
+			stop;
+		end if
+		q(:)=a(j,:);
+		a(j,:)=a(i,:);
+		a(i,:)=q(:);
+		q(:)=b(j,:);
+		b(j,:)=b(i,:);
+		b(i,:)=q(:);
+	end if		
+	!以上为寻找不为0的那一项
+
+
+	!以下为行初等变换方求逆矩阵
+	p=a(i,i);
+	do j=1,i-1
+		s=a(j,i);
+		do k=1,m
+			b(j,k)=b(j,k)-(b(i,k)/p*s);
+			!write(*,*)"This project using for finding the inverse of matrix is written by Jimmy Sheng (09/21/2019)"
+			!write(*,*)"It's a open sourse project"
+			a(j,k)=a(j,k)-(a(i,k)/p*s);
+		end do
+	end do
+	do j=i+1,n
+		s=a(j,i);
+		do k=1,m
+			b(j,k)=b(j,k)-(b(i,k)/p*s);
+			!write(*,*)"This project using for finding the inverse of matrix is written by Jimmy Sheng (09/21/2019)"
+			!write(*,*)"It's a open sourse project"
+			a(j,k)=a(j,k)-(a(i,k)/p*s);
+		end do
+	end do
+	do j=m,1,-1
+		b(i,j)=b(i,j)/p;
+		a(i,j)=a(i,j)/p;
+	end do
+	!以上为行初等变换方求逆矩阵
+!	write(*,*)"a=";
+!	do j=1,n
+!		write(*,"(4f8.2/)")a(j,:);
+!	end do
+!	write(*,*)"b=";
+!	do j=1,n
+!		write(*,"(4f16.6/)")b(j,:);
+!	end do
+!	pause;
+end do
+c=b;
+end subroutine
+!----------------------------------------求逆矩阵子程序--------------------------------------------
